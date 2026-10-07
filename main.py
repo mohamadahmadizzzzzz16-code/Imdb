@@ -9,7 +9,7 @@ import os
 # --- تنظیمات ---
 BOT_TOKEN = "8905355459:AAHrZqJMqWiBnt5h--VuAiJsOW1yHirxG7I"
 API_KEY = "f3c39c23"
-CHANNEL_ID = "@zhuug"
+CHANNEL_ID = "@zhuug"  # آیدی کانال با @ (ربات باید در کانال ادمین باشد)
 # ----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -60,46 +60,69 @@ def get_movie_details(search_term, is_random=False):
         data = requests.get(url, timeout=10).json()
         if 'Search' in data:
             movie = random.choice(data['Search'])
-            details = requests.get(f"http://www.omdbapi.com/?i={movie['imdbID']}&plot=full&apikey={API_KEY}", timeout=10).json()
+            # استفاده از plot=short برای جلوگیری از طولانی شدن بیش از حد متن
+            details = requests.get(f"http://www.omdbapi.com/?i={movie['imdbID']}&plot=short&apikey={API_KEY}", timeout=10).json()
             return details
     except:
         return None
     return None
 
 def generate_caption(details):
-    return (f"🎬 نام: {details.get('Title', 'N/A')}\n"
-            f"🎭 ژانر: {translate_genre(details.get('Genre', 'N/A'))}\n"
-            f"📅 تاریخ اکران: {details.get('Released', 'N/A')}\n"
-            f"⏳ مدت زمان: {details.get('Runtime', 'N/A')}\n"
-            f"👤 کارگردان: {details.get('Director', 'N/A')}\n"
-            f"🌍 کشور: {details.get('Country', 'N/A')}\n"
-            f"⭐ امتیاز: {details.get('imdbRating', 'N/A')}\n\n"
-            f"📝 خلاصه: {details.get('Plot', 'اطلاعاتی نیست.')}")
+    plot = details.get('Plot', 'اطلاعاتی نیست.')
+    # محدود کردن طول خلاصه به حداکثر ۳۵۰ حرف
+    if len(plot) > 350:
+        plot = plot[:350] + "..."
+
+    caption = (f"🎬 نام: {details.get('Title', 'N/A')}\n"
+               f"🎭 ژانر: {translate_genre(details.get('Genre', 'N/A'))}\n"
+               f"📅 تاریخ اکران: {details.get('Released', 'N/A')}\n"
+               f"⏳ مدت زمان: {details.get('Runtime', 'N/A')}\n"
+               f"👤 کارگردان: {details.get('Director', 'N/A')}\n"
+               f"🌍 کشور: {details.get('Country', 'N/A')}\n"
+               f"⭐ امتیاز: {details.get('imdbRating', 'N/A')}\n\n"
+               f"📝 خلاصه: {plot}")
+    
+    # اطمینان نهایی از زیر ۱۰۲۴ حرف بودن کپشن تلگرام
+    if len(caption) > 1000:
+        caption = caption[:995] + "..."
+    return caption
 
 def build_markup(details):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("تریلر 🎬", url=f"https://www.youtube.com/results?search_query={details.get('Title')}+trailer"),
-               types.InlineKeyboardButton("زیرنویس 🔎", url=f"https://subdl.com/search?q={details.get('Title')}"))
+    title = details.get('Title', '')
+    markup.add(
+        types.InlineKeyboardButton("تریلر 🎬", url=f"https://www.youtube.com/results?search_query={title}+trailer"),
+        types.InlineKeyboardButton("زیرنویس 🔎", url=f"https://subdl.com/search?q={title}")
+    )
     markup.add(types.InlineKeyboardButton("یک فیلم دیگر 🎲", callback_data="random_movie"))
     return markup
 
 def send_movie(chat_id, details):
-    try:
-        bot.send_photo(chat_id, details.get('Poster'), caption=generate_caption(details), reply_markup=build_markup(details))
-    except Exception:
-        bot.send_message(chat_id, generate_caption(details), reply_markup=build_markup(details))
+    poster = details.get('Poster')
+    caption = generate_caption(details)
+    markup = build_markup(details)
+    
+    if poster and poster != "N/A":
+        try:
+            bot.send_photo(chat_id, poster, caption=caption, reply_markup=markup)
+            return
+        except Exception:
+            pass
+    # اگر عکس نداشت یا تلگرام رد کرد، متنی ارسال می‌شود
+    bot.send_message(chat_id, caption, reply_markup=markup)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("یک فیلم خوب پیشنهاد بده! 🎲")
-    bot.reply_to(message, "سلام! به ربات فیلم خوش آمدی.\n\nبرای شروع، از دکمه زیر استفاده کن:", reply_markup=markup)
+    bot.reply_to(message, "سلام! به ربات فیلم خوش آمدی.\n\nبرای شروع، از دکمه زیر استفاده کن یا اسم فیلم را بفرست:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all(message):
     if not is_subscribed(message.from_user.id):
+        clean_channel = CHANNEL_ID.replace('@', '')
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🚀 ورود به کانال", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}"))
+        markup.add(types.InlineKeyboardButton("🚀 ورود به کانال", url=f"https://t.me/{clean_channel}"))
         bot.reply_to(message, f"⚠️ ابتدا باید در کانال ما ({CHANNEL_ID}) عضو شوی.", reply_markup=markup)
         return
 
