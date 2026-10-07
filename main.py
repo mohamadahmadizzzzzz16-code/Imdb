@@ -2,14 +2,35 @@ import telebot
 from telebot import types
 import requests
 import random
+import threading
+import http.server
+import os
 
 # --- تنظیمات ---
 BOT_TOKEN = "8905355459:AAHrZqJMqWiBnt5h--VuAiJsOW1yHirxG7I"
-API_KEY = "f3c39c23" 
-CHANNEL_ID = "@zhuug" # آیدی کانالت رو اینجا بگذار
+API_KEY = "f3c39c23"
+CHANNEL_ID = "@zhuug"
 # ----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# ===== وب‌سرور زنده نگه‌دارنده برای Render =====
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+    def log_message(self, *args):
+        pass
+
+def run_keep_alive():
+    port = int(os.environ.get('PORT', 10000))
+    server = http.server.HTTPServer(('', port), Handler)
+    server.serve_forever()
+
+threading.Thread(target=run_keep_alive, daemon=True).start()
+# ===============================================
 
 def is_subscribed(user_id):
     try:
@@ -35,7 +56,7 @@ def get_movie_details(search_term, is_random=False):
             url = f"http://www.omdbapi.com/?s={term}&page={random.randint(1, 3)}&apikey={API_KEY}"
         else:
             url = f"http://www.omdbapi.com/?s={search_term}&apikey={API_KEY}"
-        
+
         data = requests.get(url, timeout=10).json()
         if 'Search' in data:
             movie = random.choice(data['Search'])
@@ -55,6 +76,19 @@ def generate_caption(details):
             f"⭐ امتیاز: {details.get('imdbRating', 'N/A')}\n\n"
             f"📝 خلاصه: {details.get('Plot', 'اطلاعاتی نیست.')}")
 
+def build_markup(details):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("تریلر 🎬", url=f"https://www.youtube.com/results?search_query={details.get('Title')}+trailer"),
+               types.InlineKeyboardButton("زیرنویس 🔎", url=f"https://subdl.com/search?q={details.get('Title')}"))
+    markup.add(types.InlineKeyboardButton("یک فیلم دیگر 🎲", callback_data="random_movie"))
+    return markup
+
+def send_movie(chat_id, details):
+    try:
+        bot.send_photo(chat_id, details.get('Poster'), caption=generate_caption(details), reply_markup=build_markup(details))
+    except Exception:
+        bot.send_message(chat_id, generate_caption(details), reply_markup=build_markup(details))
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -73,17 +107,9 @@ def handle_all(message):
         details = get_movie_details("", is_random=True)
     else:
         details = get_movie_details(message.text)
-        
+
     if details:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("تریلر 🎬", url=f"https://www.youtube.com/results?search_query={details.get('Title')}+trailer"),
-                   types.InlineKeyboardButton("زیرنویس 🔎", url=f"https://subdl.com/search?q={details.get('Title')}"))
-        markup.add(types.InlineKeyboardButton("یک فیلم دیگر 🎲", callback_data="random_movie"))
-        
-        try:
-            bot.send_photo(message.chat.id, details.get('Poster'), caption=generate_caption(details), reply_markup=markup)
-        except:
-            bot.send_message(message.chat.id, generate_caption(details), reply_markup=markup)
+        send_movie(message.chat.id, details)
     else:
         bot.reply_to(message, "فیلمی با این نام پیدا نشد.")
 
@@ -91,15 +117,8 @@ def handle_all(message):
 def callback_random(call):
     details = get_movie_details("", is_random=True)
     if details:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("تریلر 🎬", url=f"https://www.youtube.com/results?search_query={details.get('Title')}+trailer"),
-                   types.InlineKeyboardButton("زیرنویس 🔎", url=f"https://subdl.com/search?q={details.get('Title')}"))
-        markup.add(types.InlineKeyboardButton("یک فیلم دیگر 🎲", callback_data="random_movie"))
-        
-        try:
-            bot.send_photo(call.message.chat.id, details.get('Poster'), caption=generate_caption(details), reply_markup=markup)
-        except Exception:
-            bot.send_message(call.message.chat.id, generate_caption(details), reply_markup=markup)
+        send_movie(call.message.chat.id, details)
+    bot.answer_callback_query(call.id)
 
 print("ربات روشن شد...")
 bot.infinity_polling()
