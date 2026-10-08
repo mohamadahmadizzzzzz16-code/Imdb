@@ -25,7 +25,7 @@ def run_server():
     server.serve_forever()
 
 # --- تنظیمات ---
-BOT_TOKEN = "8905355459:AAHrZqJMqWiBnt5h--VuAiJsOW1yHirxG7I"
+BOT_TOKEN = "8905355459:AAHJFCCtkdi40OkURVa1_zQxeGgaaoyJOJE"
 API_KEY = "f3c39c23"
 CHANNEL_ID = "@zhuug"  # آیدی کانال با @ (ربات باید در کانال ادمین باشد)
 # ----------------
